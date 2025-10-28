@@ -1,20 +1,19 @@
+# This pipeline will not run automatically; it must be triggered manually
 trigger: none
-  # branches:
-  #   include:
-  #     - main
 
 pool:
+  # Use the latest Ubuntu image for the build agent
   vmImage: 'ubuntu-latest'
 
-# variables:
-#   dockerRegistryServiceConnection: 'HaoACRConn'
-#   buildContextPath: 'src'
-#   tag: '$(Build.BuildId)'
 
 variables:
+  # Name of the Azure Container Registry (ACR)
   acrName: 'devopacr'
+  # Azure DevOps service connection name
   azureSubscriptionServiceConnection: AzureConn
+  # Path to the source code directory
   buildContextPath: 'src'
+  # Use the build ID as the image tag
   tag: '$(Build.BuildId)'
 
 stages:
@@ -29,6 +28,7 @@ stages:
     - checkout: self
       displayName: 'Checkout source code'
 
+    # Step: Login to Azure and Azure Container Registry (ACR)
     - task: AzureCLI@2
       displayName: Login to Azure and ACR
       inputs:
@@ -39,6 +39,7 @@ stages:
           echo "Logging into ACR..."
           az acr login --name $(acrName)
 
+    # Step: Build and push Docker image for the backend service
     - task: Bash@3
       displayName: Build and push Docker image for backend
       inputs:
@@ -53,6 +54,7 @@ stages:
           docker push $(acrName).azurecr.io/backend:$(Build.BuildId)
           docker push $(acrName).azurecr.io/backend:latest
 
+    #Step: Build and push Docker image for the frontend service
     - task: Bash@3
       displayName: Build and push Docker image for frontend
       inputs:
