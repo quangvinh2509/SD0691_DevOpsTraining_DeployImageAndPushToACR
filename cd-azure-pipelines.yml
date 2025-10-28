@@ -1,48 +1,98 @@
-name: 'deploy-to-aks'
-
 trigger: none
+  # branches:
+  #   include:
+  #     - main
 
 pool:
   vmImage: 'ubuntu-latest'
 
+# variables:
+#   dockerRegistryServiceConnection: 'HaoACRConn'
+#   buildContextPath: 'src'
+#   tag: '$(Build.BuildId)'
+
 variables:
-  azureSubscription: 'HaoACRConn'        # Service connection with AKS access
-  aksResourceGroup: 'devops-aks'         # Resource group containing your AKS
-  aksClusterName: 'devops-aks'           # Your AKS cluster name
-  acrName: 'devopacr.azurecr.io'         # Your ACR name
-  imageTag: 'latest'                     # Can also be $(Build.BuildId)
-  manifestsPath: 'docker-demo/src/manifests'
+  acrName: 'devopacr'
+  azureSubscriptionServiceConnection: AzureConn
+  buildContextPath: 'src'
+  tag: '$(Build.BuildId)'
 
-steps:
-# 1. Checkout code
-- checkout: self
+stages:
+- stage: CIStage
+  displayName: CI stage
 
-# 2. Azure CLI login
-- task: AzureCLI@2
-  displayName: 'Login to Azure and get AKS credentials'
-  inputs:
-    azureSubscription: '$(azureSubscription)'
-    scriptType: bash
-    scriptLocation: inlineScript
-    inlineScript: |
-      echo "Getting AKS credentials..."
-      az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksClusterName) --overwrite-existing
+  jobs:
+  - job: BuildAndPush
+    displayName: Build & Push Image
 
-# 3. Replace image tags in manifest (optional if using 'latest')
-- script: |
-    echo "Updating image references in manifests..."
-    sed -i "s|devopacr.azurecr.io/backend:.*|devopacr.azurecr.io/backend:$(imageTag)|" $(manifestsPath)/deployment.yaml
-    sed -i "s|devopacr.azurecr.io/frontend:.*|devopacr.azurecr.io/frontend:$(imageTag)|" $(manifestsPath)/deployment.yaml
-  displayName: 'Update image tags in deployment files'
+    steps:
+    - checkout: self
+      displayName: 'Checkout source code'
 
-# 4. Deploy to AKS
-- task: Kubernetes@1
-  displayName: 'Deploy to AKS'
-  inputs:
-    connectionType: 'Azure Resource Manager'
-    azureSubscriptionEndpoint: '$(azureSubscription)'
-    azureResourceGroup: '$(aksResourceGroup)'
-    kubernetesCluster: '$(aksClusterName)'
-    command: 'apply'
-    useConfigurationFile: true
-    configuration: '$(manifestsPath)/*.yaml'
+    # - task: Docker@2
+    #   displayName: 'Login to ACR'
+    #   inputs:
+    #     command: 'login'
+    #     containerRegistry: '$(dockerRegistryServiceConnection)'
+
+    # - task: Docker@2
+    #   displayName: 'Build and Push backend image to ACR'
+    #   inputs:
+    #     containerRegistry: '$(dockerRegistryServiceConnection)'
+    #     repository: 'backend'
+    #     command: 'buildAndPush'
+    #     Dockerfile: '$(buildContextPath)/backend/Dockerfile'
+    #     buildContext: '$(buildContextPath)/backend'
+    #     tags: |
+    #       $(tag)
+    #       latest
+
+    # - task: Docker@2
+    #   displayName: 'Build and Push Frontend image to ACR'
+    #   inputs:
+    #     containerRegistry: '$(dockerRegistryServiceConnection)'
+    #     repository: 'frontend'
+    #     command: 'buildAndPush'
+    #     Dockerfile: '$(buildContextPath)/frontend/Dockerfile'
+    #     buildContext: '$(buildContextPath)/frontend'
+    #     tags: |
+    #       $(tag)
+    #       latest
+
+    - task: AzureCLI@2
+      displayName: Login to Azure and ACR
+      inputs:
+        azureSubscription: '$(azureSubscriptionServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          echo "Logging into ACR..."
+          az acr login --name $(acrName)
+
+    - task: Bash@3
+      displayName: Build and push Docker image for backend
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "Building backend Docker image..."
+          cd $(buildContextPath)
+          docker build ./backend -t $(acrName).azurecr.io/backend:$(tag)
+          docker tag $(acrName).azurecr.io/backend:$(tag) $(acrName).azurecr.io/backend:latest
+
+          echo "Pushing backend Docker image to ACR..."
+          docker push $(acrName).azurecr.io/backend:$(Build.BuildId)
+          docker push $(acrName).azurecr.io/backend:latest
+
+    - task: Bash@3
+      displayName: Build and push Docker image for frontend
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "Building frontend Docker image..."
+          cd $(buildContextPath)
+          docker build ./frontend -t $(acrName).azurecr.io/frontend:$(tag)
+          docker tag $(acrName).azurecr.io/frontend:$(tag) $(acrName).azurecr.io/frontend:latest
+
+          echo "Pushing frontend Docker image to ACR..."
+          docker push $(acrName).azurecr.io/frontend:$(Build.BuildId)
+          docker push $(acrName).azurecr.io/frontend:latest
