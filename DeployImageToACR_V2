@@ -1,4 +1,4 @@
-
+#This version works well, but we use Version 1 for assignment
 trigger: none
   # branches:
   #   include:
