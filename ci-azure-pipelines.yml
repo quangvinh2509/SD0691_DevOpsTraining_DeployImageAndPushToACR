@@ -13,7 +13,7 @@ pool:
 
 variables:
   acrName: 'devopacr'
-  azureSubscriptionServiceConnection: HaoSubscriptionConn
+  azureSubscriptionServiceConnection: AzureConn
   buildContextPath: 'src'
   tag: '$(Build.BuildId)'
 
